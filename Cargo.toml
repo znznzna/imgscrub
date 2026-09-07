@@ -1,0 +1,20 @@
+[package]
+name = "imgscrub"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.80"
+description = "Strip C2PA/AI-provenance and privacy metadata from JPEGs without touching a single pixel"
+license = "MIT"
+repository = "https://github.com/znznzna/imgscrub"
+categories = ["command-line-utilities", "multimedia::images"]
+keywords = ["jpeg", "metadata", "exif", "c2pa", "privacy"]
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+quick-xml = "0.37"
+ciborium = "0.2"
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1
