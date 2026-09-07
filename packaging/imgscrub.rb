@@ -5,7 +5,7 @@
 class Imgscrub < Formula
   desc "Strip C2PA/AI-provenance and tracking metadata from JPEGs without touching pixels"
   homepage "https://github.com/znznzna/imgscrub"
-  version "0.1.1"
+  version "0.1.2"
   license "MIT"
 
   on_macos do

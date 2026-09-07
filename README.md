@@ -206,8 +206,17 @@ Two things make this work, and both are easy to get wrong:
   (`kLSNotAnApplicationErr`). `install-lightroom-action` builds an AppleScript droplet
   with `osacompile` so it can receive the exported files as an `odoc` Apple Event.
 - **imgscrub is called by absolute path.** GUI apps do not inherit your shell `PATH`, so
-  `/opt/homebrew/bin` is not on it. The installer resolves and embeds the running
-  binary's own path.
+  `/opt/homebrew/bin` is not on it. The installer embeds an absolute path — preferring the
+  stable `/opt/homebrew/bin` symlink over the versioned Cellar path, which would break on
+  the next `brew upgrade`.
+
+**After installing, restart Lightroom.** The `Export Actions` folder is only read at
+launch, so a freshly installed action will not appear in the dropdown until you do.
+
+**Export presets store the post-processing action as an absolute path.** If a preset
+points at something that no longer exists, Lightroom runs nothing and says nothing.
+`install-lightroom-action` scans your presets and names the stale ones; `--fix-presets`
+rewrites them (keeping a `.imgscrub-backup` copy).
 
 ## Scope
 

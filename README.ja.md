@@ -209,8 +209,17 @@ Web 用プリセットにだけ紐づけることもできる。実行のたび�
   AppleScript のドロップレットを生成し、書き出したファイルを Apple Event の `odoc` として
   受け取れるようにする
 - **imgscrub は絶対パスで呼ぶ。** GUI アプリはシェルの `PATH` を継承しないので
-  `/opt/homebrew/bin` は入っていない。インストーラは動いている自分自身のパスを解決して
-  埋め込む
+  `/opt/homebrew/bin` は入っていない。インストーラは絶対パスを埋め込むが、Cellar の
+  バージョン入りパスではなく `/opt/homebrew/bin` の symlink を優先する
+  （前者だと次の `brew upgrade` で壊れる）
+
+**登録したら Lightroom を再起動する。** `Export Actions` フォルダは起動時にしか
+読まれないので、後から置いたものはドロップダウンに出ない。
+
+**書き出しプリセットは後処理を絶対パスで保存する。** 存在しないものを指したプリセットは、
+Lightroom が何も実行せず何も言わない状態になる。`install-lightroom-action` は
+プリセットを走査して該当するものの名前を出す。`--fix-presets` で書き換えられる
+（`.imgscrub-backup` に元を残す）。
 
 ## 対応範囲
 

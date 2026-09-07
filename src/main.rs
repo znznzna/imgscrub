@@ -73,9 +73,12 @@ enum Command {
     },
     /// Lightroom Classic の書き出し後処理に登録する
     InstallLightroomAction {
-        /// 既存のスクリプトを確認なしで上書きする
+        /// 既存の登録を確認なしで上書きする
         #[arg(long)]
         force: bool,
+        /// 旧版の imgscrub.sh を指している書き出しプリセットを書き換える
+        #[arg(long)]
+        fix_presets: bool,
     },
     /// Lightroom Classic の書き出し後処理から削除する
     UninstallLightroomAction,
@@ -86,7 +89,9 @@ fn main() -> ExitCode {
 
     match &cli.command {
         Some(Command::Inspect { paths, json }) => run_inspect(paths, *json),
-        Some(Command::InstallLightroomAction { force }) => install_action(*force),
+        Some(Command::InstallLightroomAction { force, fix_presets }) => {
+            install_action(*force, *fix_presets)
+        }
         Some(Command::UninstallLightroomAction) => uninstall_action(),
         None => run_scrub(&cli),
     }
@@ -500,13 +505,90 @@ on logLine(t)
 end logLine
 "#;
 
+/// AppleScript に埋め込む imgscrub のパスを決める。
+///
+/// Homebrew は `/opt/homebrew/bin/imgscrub` を Cellar のバージョン入りパスへの symlink に
+/// する。`canonicalize` するとそのバージョン入りパスになり、次の `brew upgrade` で
+/// 後処理が壊れる。同じ実体を指す安定した symlink があればそちらを埋め込む。
+fn stable_binary_path() -> std::io::Result<PathBuf> {
+    let real = std::env::current_exe()?.canonicalize()?;
+    for candidate in ["/opt/homebrew/bin/imgscrub", "/usr/local/bin/imgscrub"] {
+        let c = Path::new(candidate);
+        if c.canonicalize().is_ok_and(|r| r == real) {
+            return Ok(c.to_path_buf());
+        }
+    }
+    Ok(real)
+}
+
+/// Lightroom Classic の書き出しプリセットの置き場所。
+fn export_presets_dir() -> Option<PathBuf> {
+    if let Some(d) = std::env::var_os("IMGSCRUB_EXPORT_PRESETS_DIR") {
+        return Some(PathBuf::from(d));
+    }
+    let home = std::env::var_os("HOME")?;
+    Some(PathBuf::from(home).join("Library/Application Support/Adobe/Lightroom/Export Presets"))
+}
+
+/// `.lrtemplate` を再帰的に集める。
+fn collect_presets(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for e in entries.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            collect_presets(&p, out);
+        } else if p.extension().is_some_and(|x| x == "lrtemplate") {
+            out.push(p);
+        }
+    }
+}
+
+/// 旧版のシェルスクリプトを後処理に指定しているプリセットを探す。
+///
+/// プリセットは後処理を**絶対パスで**記録する。`.sh` は LaunchServices から起動できない
+/// ので、その参照が残っているプリセットは黙って何もしない書き出しになる。
+fn presets_referencing_legacy(legacy: &Path) -> Vec<PathBuf> {
+    let Some(dir) = export_presets_dir() else {
+        return Vec::new();
+    };
+    let mut files = Vec::new();
+    collect_presets(&dir, &mut files);
+
+    let needle = legacy.to_string_lossy().to_string();
+    files
+        .into_iter()
+        .filter(|p| {
+            std::fs::read_to_string(p)
+                .map(|s| s.contains(&needle))
+                .unwrap_or(false)
+        })
+        .collect()
+}
+
+/// プリセットの後処理の参照を `.sh` から `.app` に書き換える。
+fn fix_preset(path: &Path, legacy: &Path, app: &Path) -> std::io::Result<()> {
+    let text = std::fs::read_to_string(path)?;
+    let fixed = text.replace(&*legacy.to_string_lossy(), &app.to_string_lossy());
+    if fixed == text {
+        return Ok(());
+    }
+    // 書き換える前に元を残す
+    let backup = path.with_extension("lrtemplate.imgscrub-backup");
+    if !backup.exists() {
+        std::fs::copy(path, &backup)?;
+    }
+    std::fs::write(path, fixed)
+}
+
 /// 後処理のログの置き場所。
 fn action_log_path() -> Option<PathBuf> {
     let home = std::env::var_os("HOME")?;
     Some(PathBuf::from(home).join("Library/Logs/imgscrub-lightroom.log"))
 }
 
-fn install_action(force: bool) -> ExitCode {
+fn install_action(force: bool, fix_presets: bool) -> ExitCode {
     let Some(dir) = export_actions_dir() else {
         eprintln!("HOME が取得できません");
         return ExitCode::from(2);
@@ -518,8 +600,8 @@ fn install_action(force: bool) -> ExitCode {
         return ExitCode::from(2);
     }
 
-    // GUI アプリの PATH には頼れないので、いま動いている自分自身の絶対パスを埋め込む
-    let binary = match std::env::current_exe().and_then(|p| p.canonicalize()) {
+    // GUI アプリの PATH には頼れないので絶対パスを埋め込む
+    let binary = match stable_binary_path() {
         Ok(p) => p,
         Err(e) => {
             eprintln!("自分の実行パスを解決できません: {e}");
@@ -573,20 +655,54 @@ fn install_action(force: bool) -> ExitCode {
         }
     }
 
-    // 旧版のシェルスクリプトが残っていると壊れた選択肢が並ぶので消す
+    // 旧版のシェルスクリプトが残っていると起動できない選択肢が並ぶので消す
     let legacy = dir.join("imgscrub.sh");
-    if legacy.exists() {
+    let had_legacy = legacy.exists();
+    if had_legacy {
         let _ = std::fs::remove_file(&legacy);
-        println!("旧版の imgscrub.sh を削除しました（LaunchServices から起動できないため）");
     }
 
     println!("登録しました: {}", app.display());
     println!("  呼び出す imgscrub: {}", binary.display());
     println!("  ログ: {}", log.display());
+    if had_legacy {
+        println!("  旧版の imgscrub.sh を削除しました（LaunchServices から起動できないため）");
+    }
+
+    // プリセットは後処理を絶対パスで持つ。旧 .sh を指したままだと黙って何もしない
+    let stale = presets_referencing_legacy(&legacy);
+    if !stale.is_empty() {
+        println!();
+        println!("⚠ 旧版の imgscrub.sh を指している書き出しプリセットがあります:");
+        for p in &stale {
+            let name = p.file_stem().unwrap_or_default().to_string_lossy();
+            println!("    {name}");
+        }
+        if fix_presets {
+            let mut fixed = 0usize;
+            for p in &stale {
+                match fix_preset(p, &legacy, &app) {
+                    Ok(()) => fixed += 1,
+                    Err(e) => eprintln!("    {}: {e}", p.display()),
+                }
+            }
+            println!(
+                "  {fixed} 件を imgscrub.app に書き換えました（元は .imgscrub-backup に保存）"
+            );
+        } else {
+            println!("  このままでは後処理が何も実行されません。");
+            println!("  --fix-presets で書き換えられます（元はバックアップします）。");
+        }
+    }
+
     println!();
-    println!("Lightroom Classic の書き出しダイアログの「後処理」で");
-    println!("「imgscrub」を選ぶと、書き出し後に自動で実行されます。");
-    println!("動いたかどうかは上のログで確認できます。");
+    println!("この後の手順:");
+    println!("  1. Lightroom Classic を再起動する");
+    println!("     （Export Actions フォルダは起動時にしか読まれないため）");
+    println!("  2. 書き出しダイアログの「後処理」で「imgscrub」を選ぶ");
+    println!("  3. プリセットを使っているなら上書き保存する");
+    println!();
+    println!("動いたかどうかは {} で確認できます。", log.display());
     ExitCode::SUCCESS
 }
 

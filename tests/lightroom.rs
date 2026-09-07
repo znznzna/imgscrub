@@ -118,3 +118,99 @@ fn missing_directory_is_reported() {
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("見つかりません"));
 }
+
+/// プリセットは後処理を絶対パスで持つ。旧 `.sh` を指したままだと黙って何もしない
+/// 書き出しになるので、登録時に検出する。
+#[test]
+fn stale_presets_are_detected() {
+    let dir = workdir("presets");
+    let presets = workdir("presets-store");
+    let legacy = dir.join("imgscrub.sh");
+    std::fs::write(&legacy, "#!/bin/sh\n").unwrap();
+
+    let sub = presets.join("User Presets");
+    std::fs::create_dir_all(&sub).unwrap();
+    let preset = sub.join("Scrub out.lrtemplate");
+    std::fs::write(
+        &preset,
+        format!(
+            "s = {{\n\texport_postProcessing = \"{}\",\n}}\n",
+            legacy.display()
+        ),
+    )
+    .unwrap();
+
+    let out = Command::new(bin())
+        .arg("install-lightroom-action")
+        .env("IMGSCRUB_EXPORT_ACTIONS_DIR", &dir)
+        .env("IMGSCRUB_EXPORT_PRESETS_DIR", &presets)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("Scrub out"),
+        "プリセット名が出ない: {stdout}"
+    );
+    assert!(stdout.contains("--fix-presets"), "修復方法の案内がない");
+    // 検出だけなので書き換えていない
+    assert!(std::fs::read_to_string(&preset)
+        .unwrap()
+        .contains("imgscrub.sh"));
+}
+
+#[test]
+fn fix_presets_rewrites_and_backs_up() {
+    let dir = workdir("fix");
+    let presets = workdir("fix-store");
+    let legacy = dir.join("imgscrub.sh");
+    std::fs::write(&legacy, "#!/bin/sh\n").unwrap();
+
+    let preset = presets.join("p.lrtemplate");
+    std::fs::write(
+        &preset,
+        format!("export_postProcessing = \"{}\",\n", legacy.display()),
+    )
+    .unwrap();
+
+    let out = Command::new(bin())
+        .args(["install-lightroom-action", "--fix-presets"])
+        .env("IMGSCRUB_EXPORT_ACTIONS_DIR", &dir)
+        .env("IMGSCRUB_EXPORT_PRESETS_DIR", &presets)
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+
+    let after = std::fs::read_to_string(&preset).unwrap();
+    assert!(
+        after.contains("imgscrub.app"),
+        "書き換えられていない: {after}"
+    );
+    assert!(!after.contains("imgscrub.sh"));
+
+    let backup = preset.with_extension("lrtemplate.imgscrub-backup");
+    assert!(backup.exists(), "バックアップがない");
+    assert!(std::fs::read_to_string(&backup)
+        .unwrap()
+        .contains("imgscrub.sh"));
+}
+
+/// Homebrew の symlink を埋め込む。Cellar のバージョン入りパスを埋めると
+/// 次の brew upgrade で後処理が壊れる。
+#[test]
+fn brew_symlink_is_preferred_over_cellar_path() {
+    let dir = workdir("symlink");
+    let out = run(&dir, &["install-lightroom-action"]);
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    let line = stdout
+        .lines()
+        .find(|l| l.contains("呼び出す imgscrub:"))
+        .expect("パスが報告される");
+    assert!(
+        !line.contains("/Cellar/"),
+        "Cellar のバージョン入りパスが埋め込まれた: {line}"
+    );
+}
