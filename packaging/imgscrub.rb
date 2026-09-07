@@ -5,28 +5,28 @@
 class Imgscrub < Formula
   desc "Strip C2PA/AI-provenance and tracking metadata from JPEGs without touching pixels"
   homepage "https://github.com/znznzna/imgscrub"
-  version "0.1.2"
+  version "0.1.3"
   license "MIT"
 
   on_macos do
     on_arm do
       url "https://github.com/znznzna/imgscrub/releases/download/v#{version}/imgscrub-v#{version}-aarch64-apple-darwin.tar.gz"
-      sha256 "62b6fb247065d077b2b7ed667a8e24227086fb825da0d1f248af2d5500b95341"
+      sha256 "9170782cc6ae0b85c78712b2390489d13ead1ca72848afe9477673caeea1d201"
     end
     on_intel do
       url "https://github.com/znznzna/imgscrub/releases/download/v#{version}/imgscrub-v#{version}-x86_64-apple-darwin.tar.gz"
-      sha256 "e1a2d78c91f5dbb5e287f3ec973204c6d8e7657ba27c8d26836c23e553021335"
+      sha256 "4042ae4278ec4d8405258b55b2719a0f2b191cf1d2aacaf12716606c019650ce"
     end
   end
 
   on_linux do
     on_arm do
       url "https://github.com/znznzna/imgscrub/releases/download/v#{version}/imgscrub-v#{version}-aarch64-unknown-linux-gnu.tar.gz"
-      sha256 "cccbca3f58eeb92c67aae2c064d91924bca64891061f81b0a096e77f945c6339"
+      sha256 "a03ab8087255f0ecdb8bffde6acf9cf5169f4fb2c74ea93367468824279472e6"
     end
     on_intel do
       url "https://github.com/znznzna/imgscrub/releases/download/v#{version}/imgscrub-v#{version}-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "d00ae22d11ea8b809e56b817a8f3daa605f2b2f2fc3ae046b3061ed786667d35"
+      sha256 "42ac3a87f5853956d795e1371056d7c3f35e800e46e57615926a099aa3d95a38"
     end
   end
 

@@ -624,7 +624,11 @@ fn install_action(force: bool, fix_presets: bool) -> ExitCode {
         .replace("@BINARY@", &binary.to_string_lossy())
         .replace("@LOG@", &log.to_string_lossy());
 
-    let tmp = std::env::temp_dir().join("imgscrub-action.applescript");
+    // 固定名にすると同時に 2 つ走ったときに互いのファイルを消し合う
+    let tmp = std::env::temp_dir().join(format!(
+        "imgscrub-action-{}.applescript",
+        std::process::id()
+    ));
     if let Err(e) = std::fs::write(&tmp, &script) {
         eprintln!("{}: {e}", tmp.display());
         return ExitCode::from(2);
