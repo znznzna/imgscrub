@@ -178,3 +178,54 @@ EXIF / ICC / IPTC / XMP  : バイト単位で一致
 
 1. `--json` スキーマの形（`inspect` と実行サマリで共通にするか分けるか）
 2. `--keep` の語彙（`gps` は v0.1 では効果なしなので v0.1 では受け付けないか、警告するか）
+
+## 完了状況（2026-09-07）
+
+| Phase | 状態 | 記録 |
+|---|---|---|
+| 0 リポジトリ初期化 | 完了 | `.claude/verify.sh`（fast/full）、CI は GitHub-hosted |
+| 1 セグメント走査 + フィクスチャ | 完了 | 実物の APPn を移植した 5 種、テスト 12 件 |
+| 2 除去と検証（縦切り） | 完了 | `--c2pa-only` で -14,478 B、他セグメントはバイト単位一致 |
+| 3 XMP プロパティ除去 | 完了 | 既定で -24,147 B、firefly 痕跡ゼロ |
+| 4 inspect | 完了 | appEnforced と署名者/発行者の分離まで読める |
+| 5 CLI | 完了 | `--keep` / `-r` / `--json` / 終了コード |
+| 6 Lightroom 統合 | 完了 | Export Actions に登録・実機確認 |
+| 7 配布 | 完了（crates.io を除く） | 下記 |
+| 8 README | 完了 | 英日 |
+
+### 配布の結果
+
+- リポジトリ: <https://github.com/znznzna/imgscrub>（public）
+- CI: ubuntu-latest / macos-latest で green
+- Release `v0.1.0`: 4 ターゲットの tar.gz + sha256
+- Homebrew tap: <https://github.com/znznzna/homebrew-tap>
+  `brew install znznzna/tap/imgscrub` で実機インストール確認済み
+- **crates.io: 未公開。** `cargo publish --dry-run` は通るが API トークンが無い。
+  `cargo login` の後に `cargo publish` で完了する
+
+### テスト
+
+42 件（segments 12 / invariants 9 / xmp 10 / inspect 11）。`verify.sh full` 通過。
+
+### 設計から変えた点
+
+1. **MPF の削除条件を厳密化** — 「先行セグメントが 1 つでも削除されたら削除」に変更。
+   何も削除しないなら MPF は残せる
+2. **xpacket パディング（約 4KB）を落とす** — 他ツールの in-place 編集用の余白で、
+   常に全体を書き直す imgscrub には不要。設計時の PoC より削除量が増えた
+3. **マニフェストストアの全マニフェストを走査** — C2PA はストアに複数のマニフェストを
+   持ちうる。先頭だけ見ると取り込んだ素材由来の AI 宣言を取りこぼす
+4. **`Segment::len()` → `size()`** — セグメントは最小 2 バイトで空になり得ないため、
+   `len`/`is_empty` の対を持たせる意味がない
+
+### 実装中に見つけたバグ
+
+- **quick-xml の `check_end_names` は EOF 時点の未閉タグを検出しない。**
+  壊れた XMP が黙って「別の妥当な XML」に書き換わる状態だった。EOF で深さ 0 を
+  要求する検査を追加し、壊れている場合は無編集保持 + 警告に落とす
+
+### 残件
+
+1. crates.io への publish（要 `cargo login`）
+2. `--strip-exif-private`（GPS・シリアル・MakerNote の除去。IFD 再構築）→ v0.2
+3. PNG / TIFF 対応 → v0.2 以降
