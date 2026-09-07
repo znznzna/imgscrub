@@ -394,7 +394,7 @@ v0.1 の全動作モードで成立する不変条件となり、テスト（§8
 外科的除去:                              17,875,759 B  (-18,660)
 exiftool 方式:                           17,847,754 B  (-46,665)
 
-画素 SHA256（デコード後）: 7788fcf8c4c542f3e9c6f033852ef9a0  ← 3 ファイルすべて一致
+画素 SHA256（デコード後）: 7788fcf8c4c542f3e9c6f033852ef9a0c0b1400886dc4c11c11981a26ab9eb57  ← 3 ファイルすべて一致
 
 外科的除去後の検証:
   AI 痕跡 grep (c2pa|jumbf|firefly|genai|remove|algorithmic|digitalsource): 0 件

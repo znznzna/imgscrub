@@ -88,7 +88,7 @@
 入力  6x7-18_PSMS_edited.jpg   17,894,419 B
 出力  --c2pa-only              -14,478 B（APP11 のみ削除）
 EXIF / ICC / IPTC / XMP  : バイト単位で一致
-デコード後画素 SHA256     : 7788fcf8c4c542f3e9c6f033852ef9a0
+デコード後画素 SHA256     : 7788fcf8c4c542f3e9c6f033852ef9a0c0b1400886dc4c11c11981a26ab9eb57
 ```
 
 ## Phase 3: XMP プロパティ除去
