@@ -11,22 +11,22 @@ class Imgscrub < Formula
   on_macos do
     on_arm do
       url "https://github.com/znznzna/imgscrub/releases/download/v#{version}/imgscrub-v#{version}-aarch64-apple-darwin.tar.gz"
-      sha256 "9170782cc6ae0b85c78712b2390489d13ead1ca72848afe9477673caeea1d201"
+      sha256 "d01f59e646eefee432b3e9c027ef1faa7cdab3b5d0fa46fc4bf3f116161586d9"
     end
     on_intel do
       url "https://github.com/znznzna/imgscrub/releases/download/v#{version}/imgscrub-v#{version}-x86_64-apple-darwin.tar.gz"
-      sha256 "4042ae4278ec4d8405258b55b2719a0f2b191cf1d2aacaf12716606c019650ce"
+      sha256 "d14463e623bf259e1a517d1475f01a34c26d44d4581cb329b263cbf3863a5966"
     end
   end
 
   on_linux do
     on_arm do
       url "https://github.com/znznzna/imgscrub/releases/download/v#{version}/imgscrub-v#{version}-aarch64-unknown-linux-gnu.tar.gz"
-      sha256 "a03ab8087255f0ecdb8bffde6acf9cf5169f4fb2c74ea93367468824279472e6"
+      sha256 "839e9c764b72443e867ffecf47e223242e34a2288cf14fbdf2d7b95991ade76b"
     end
     on_intel do
       url "https://github.com/znznzna/imgscrub/releases/download/v#{version}/imgscrub-v#{version}-x86_64-unknown-linux-gnu.tar.gz"
-      sha256 "42ac3a87f5853956d795e1371056d7c3f35e800e46e57615926a099aa3d95a38"
+      sha256 "6d0efca0f98023c9cf9fac4a8622a9e0e2a42c5a288e436583a54843ab915db0"
     end
   end
 
