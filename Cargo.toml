@@ -8,6 +8,8 @@ license = "MIT"
 repository = "https://github.com/znznzna/imgscrub"
 categories = ["command-line-utilities", "multimedia::images"]
 keywords = ["jpeg", "metadata", "exif", "c2pa", "privacy"]
+readme = "README.md"
+exclude = ["docs/", "packaging/", ".github/", ".claude/", "tools/"]
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

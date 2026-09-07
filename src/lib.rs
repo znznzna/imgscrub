@@ -3,6 +3,9 @@
 //! 設計方針: 画像のスキャンデータ（SOS 以降）には一切触れない。セグメント単位の
 //! 追加・削除のみを行うため、デコードと再エンコードが発生せず画素は構造的に無劣化になる。
 
+pub mod c2pa;
+pub mod inspect;
 pub mod jpeg;
+pub mod jumbf;
 pub mod scrub;
 pub mod xmp;

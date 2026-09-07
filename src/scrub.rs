@@ -106,7 +106,7 @@ pub fn process(data: &[u8], opts: &Options) -> Result<(Vec<u8>, Report), Error> 
                     .push(Removal::new(label_for(reason, seg.app_index()), seg.size()));
             }
 
-            Action::Rewrite => rewrite_xmp(data, seg, &mut out, &mut report),
+            Action::Rewrite => rewrite_xmp(data, seg, opts, &mut out, &mut report),
         }
 
         if seg.app_kind(data) == Some(App::XmpExtension) {
@@ -127,11 +127,11 @@ pub fn process(data: &[u8], opts: &Options) -> Result<(Vec<u8>, Report), Error> 
 ///
 /// 編集できない場合（UTF-8 でない・XML が壊れている・再直列化で膨らむ）は無編集で通し、
 /// 警告を残す。プロパティが残らなくなった場合はセグメントごと落とす。
-fn rewrite_xmp(data: &[u8], seg: &Segment, out: &mut Vec<u8>, report: &mut Report) {
+fn rewrite_xmp(data: &[u8], seg: &Segment, opts: &Options, out: &mut Vec<u8>, report: &mut Report) {
     let payload = seg.payload_bytes(data);
     let xml = &payload[xmp::XMP_HEADER.len()..];
 
-    let Some((new_xml, outcome)) = xmp::strip(xml) else {
+    let Some((new_xml, outcome)) = xmp::strip(xml, &opts.keep.to_xmp_keep()) else {
         out.extend_from_slice(seg.bytes(data));
         report
             .warnings

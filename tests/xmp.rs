@@ -7,6 +7,12 @@ use imgscrub::jpeg::segment::{scan, App};
 use imgscrub::scrub::process;
 use imgscrub::xmp;
 
+/// 何も除外しない（全部除去する）設定。
+const K: xmp::Keep = xmp::Keep {
+    xmpmm: false,
+    crs: false,
+};
+
 /// 出力から XMP の XML を取り出す。
 fn xmp_of(data: &[u8]) -> Option<String> {
     let segs = scan(data).ok()?;
@@ -58,7 +64,7 @@ fn output_xmp_is_well_formed() {
         assert!(x.contains("</x:xmpmeta>"), "{name}: xmpmeta が閉じていない");
         // strip は EOF 時点の深さを検証するので、通ればタグの対応が取れている。
         // 2 回目は何も除去されないこと（冪等）も同時に確認できる。
-        let (_, again) = xmp::strip(x.as_bytes())
+        let (_, again) = xmp::strip(x.as_bytes(), &xmp::Keep::default())
             .unwrap_or_else(|| panic!("{name}: 出力 XMP を再パースできない"));
         assert!(
             again.removed.is_empty(),
@@ -72,7 +78,14 @@ fn output_xmp_is_well_formed() {
 fn c2pa_only_leaves_xmp_untouched() {
     let d = common::fixture("lrc_firefly.jpg");
     let before = xmp_of(&d).unwrap();
-    let (out, _) = process(&d, &Options { c2pa_only: true }).unwrap();
+    let (out, _) = process(
+        &d,
+        &Options {
+            c2pa_only: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert_eq!(
         before,
         xmp_of(&out).unwrap(),
@@ -123,8 +136,8 @@ fn xpacket_padding_is_dropped() {
 
 #[test]
 fn broken_xml_is_kept_unedited() {
-    assert!(xmp::strip(b"<x:xmpmeta><unclosed>").is_none());
-    assert!(xmp::strip(b"\xff\xfe not utf-8 \xff").is_none());
+    assert!(xmp::strip(b"<x:xmpmeta><unclosed>", &K).is_none());
+    assert!(xmp::strip(b"\xff\xfe not utf-8 \xff", &K).is_none());
 }
 
 #[test]
@@ -137,7 +150,7 @@ fn scaffolding_only_xmp_is_reported_empty() {
         r#" xmpMM:DocumentID="xmp.did:deadbeef"/>"#,
         r#"</rdf:RDF></x:xmpmeta><?xpacket end="w"?>"#,
     );
-    let (_, outcome) = xmp::strip(xml.as_bytes()).unwrap();
+    let (_, outcome) = xmp::strip(xml.as_bytes(), &K).unwrap();
     assert_eq!(outcome.removed.len(), 1);
     assert!(outcome.is_empty, "追跡 ID しかない XMP は空になる");
 }
@@ -151,7 +164,7 @@ fn unrelated_properties_are_untouched() {
         r#" dc:format="image/jpeg"/>"#,
         r#"</rdf:RDF></x:xmpmeta>"#,
     );
-    let (out, outcome) = xmp::strip(xml.as_bytes()).unwrap();
+    let (out, outcome) = xmp::strip(xml.as_bytes(), &K).unwrap();
     assert!(outcome.removed.is_empty());
     assert!(!outcome.is_empty);
     assert!(String::from_utf8_lossy(&out).contains("image/jpeg"));
@@ -168,7 +181,7 @@ fn matching_is_by_namespace_not_prefix() {
         r#" weird:PreservedFileName="secret.ARQ" dc:format="image/jpeg"/>"#,
         r#"</rdf:RDF></x:xmpmeta>"#,
     );
-    let (out, outcome) = xmp::strip(xml.as_bytes()).unwrap();
+    let (out, outcome) = xmp::strip(xml.as_bytes(), &K).unwrap();
     assert_eq!(outcome.removed.len(), 1, "接頭辞が weird でも除去される");
     let s = String::from_utf8_lossy(&out);
     assert!(!s.contains("secret.ARQ"));

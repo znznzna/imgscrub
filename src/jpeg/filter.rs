@@ -39,11 +39,54 @@ pub enum Action {
     Rewrite,
 }
 
+/// `--keep` で除去対象から外すもの。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct KeepSet {
+    /// `xmpMM:*` の追跡 ID・履歴を残す
+    pub xmpmm: bool,
+    /// `crs:*` の現像設定（生成AI の適用履歴を含む）を残す
+    pub crs: bool,
+    /// MPF を残す（オフセットが壊れるため既定では落とす）
+    pub mpf: bool,
+    /// 未知の APPn を残す
+    pub unknown: bool,
+}
+
+impl KeepSet {
+    /// `--keep xmpmm,crs` のような指定を解釈する。
+    ///
+    /// 不明な値が含まれていたらそれを返す（利用者の打ち間違いを黙って無視しない）。
+    pub fn parse<S: AsRef<str>>(values: &[S]) -> Result<Self, String> {
+        let mut out = Self::default();
+        for v in values {
+            match v.as_ref().trim().to_ascii_lowercase().as_str() {
+                "" => {}
+                "xmpmm" => out.xmpmm = true,
+                "crs" => out.crs = true,
+                "mpf" => out.mpf = true,
+                "unknown" => out.unknown = true,
+                other => return Err(other.to_string()),
+            }
+        }
+        Ok(out)
+    }
+
+    /// XMP のプロパティ除去に渡す形へ変換する。
+    pub fn to_xmp_keep(self) -> crate::xmp::Keep {
+        crate::xmp::Keep {
+            xmpmm: self.xmpmm,
+            crs: self.crs,
+        }
+    }
+}
+
 /// 除去の強さ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Options {
     /// APP11 のみを対象にし、XMP も未知の APPn も触らない
     pub c2pa_only: bool,
+    /// 除去対象から外すもの
+    pub keep: KeepSet,
 }
 
 /// セグメント列に対する処理を決める。
@@ -63,6 +106,7 @@ pub fn decide(data: &[u8], segs: &[Segment], opts: &Options) -> Vec<Action> {
             Some(App::Jumbf) => Action::Drop(DropReason::C2pa),
 
             Some(App::Mpf) => {
+                // オフセットが絶対値なので、前を詰めたら残せない。keep 指定より正しさを優先する
                 if dropped_before {
                     Action::Drop(DropReason::MpfOffsetsInvalidated)
                 } else {
@@ -85,7 +129,7 @@ pub fn decide(data: &[u8], segs: &[Segment], opts: &Options) -> Vec<Action> {
             Some(App::XmpExtension) => Action::Keep,
 
             Some(App::Unknown(n)) => {
-                if opts.c2pa_only {
+                if opts.c2pa_only || opts.keep.unknown {
                     Action::Keep
                 } else {
                     Action::Drop(DropReason::UnknownApp(n))

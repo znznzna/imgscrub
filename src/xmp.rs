@@ -25,6 +25,13 @@ const NS_DCTERMS: Namespace = Namespace(b"http://purl.org/dc/terms/");
 const NS_RDF: Namespace = Namespace(b"http://www.w3.org/1999/02/22-rdf-syntax-ns#");
 const NS_XMPMETA: Namespace = Namespace(b"adobe:ns:meta/");
 
+/// 除去対象から外す名前空間。`crate::jpeg::filter::KeepSet` から作る。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Keep {
+    pub xmpmm: bool,
+    pub crs: bool,
+}
+
 /// 除去した 1 プロパティ。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Removed {
@@ -43,13 +50,16 @@ pub struct Outcome {
 }
 
 /// 除去対象なら理由を返す。要素と属性で共通。
-fn removal_reason(ns: &ResolveResult, local: &[u8]) -> Option<&'static str> {
+fn removal_reason(ns: &ResolveResult, local: &[u8], keep: &Keep) -> Option<&'static str> {
     let ns = match ns {
         ResolveResult::Bound(n) => *n,
         _ => return None,
     };
 
     if ns == NS_CRS {
+        if keep.crs {
+            return None;
+        }
         return match local {
             b"RemoveAreas" => Some("生成AI消しゴムの適用履歴"),
             b"fill_method" => Some("塗りつぶし方式（firefly か否かが露出する）"),
@@ -58,6 +68,9 @@ fn removal_reason(ns: &ResolveResult, local: &[u8]) -> Option<&'static str> {
     }
 
     if ns == NS_XMPMM {
+        if keep.xmpmm {
+            return None;
+        }
         return match local {
             b"PreservedFileName" => Some("元ファイル名"),
             b"DocumentID" | b"InstanceID" | b"OriginalDocumentID" => {
@@ -94,6 +107,7 @@ fn rebuild<'a>(
     e: &BytesStart<'a>,
     reader: &NsReader<&[u8]>,
     outcome: &mut Outcome,
+    keep: &Keep,
 ) -> Option<(BytesStart<'a>, usize)> {
     let name = e.name();
     let mut out = BytesStart::from_content(
@@ -112,7 +126,7 @@ fn rebuild<'a>(
         }
 
         let (ns, local) = reader.resolve_attribute(key);
-        if let Some(why) = removal_reason(&ns, local.as_ref()) {
+        if let Some(why) = removal_reason(&ns, local.as_ref(), keep) {
             outcome.removed.push(Removed {
                 name: String::from_utf8_lossy(key.as_ref()).into_owned(),
                 why,
@@ -134,7 +148,7 @@ fn rebuild<'a>(
 ///
 /// `None` を返すのは、UTF-8 でない / XML として壊れている / 再直列化で膨らんだ場合。
 /// 呼び出し側は XMP を無編集で保持する。
-pub fn strip(xml_bytes: &[u8]) -> Option<(Vec<u8>, Outcome)> {
+pub fn strip(xml_bytes: &[u8], keep: &Keep) -> Option<(Vec<u8>, Outcome)> {
     let xml = std::str::from_utf8(xml_bytes).ok()?;
 
     let mut reader = NsReader::from_str(xml);
@@ -154,7 +168,7 @@ pub fn strip(xml_bytes: &[u8]) -> Option<(Vec<u8>, Outcome)> {
 
             Event::Start(e) => {
                 let local = e.local_name();
-                if let Some(why) = removal_reason(&ns, local.as_ref()) {
+                if let Some(why) = removal_reason(&ns, local.as_ref(), keep) {
                     outcome.removed.push(Removed {
                         name: String::from_utf8_lossy(e.name().as_ref()).into_owned(),
                         why,
@@ -165,7 +179,7 @@ pub fn strip(xml_bytes: &[u8]) -> Option<(Vec<u8>, Outcome)> {
                 if !is_scaffolding(&ns, local.as_ref()) {
                     props += 1;
                 }
-                let (rebuilt, kept) = rebuild(&e, &reader, &mut outcome)?;
+                let (rebuilt, kept) = rebuild(&e, &reader, &mut outcome, keep)?;
                 props += kept;
                 depth += 1;
                 writer.write_event(Event::Start(rebuilt)).ok()?;
@@ -173,7 +187,7 @@ pub fn strip(xml_bytes: &[u8]) -> Option<(Vec<u8>, Outcome)> {
 
             Event::Empty(e) => {
                 let local = e.local_name();
-                if let Some(why) = removal_reason(&ns, local.as_ref()) {
+                if let Some(why) = removal_reason(&ns, local.as_ref(), keep) {
                     outcome.removed.push(Removed {
                         name: String::from_utf8_lossy(e.name().as_ref()).into_owned(),
                         why,
@@ -183,7 +197,7 @@ pub fn strip(xml_bytes: &[u8]) -> Option<(Vec<u8>, Outcome)> {
                 if !is_scaffolding(&ns, local.as_ref()) {
                     props += 1;
                 }
-                let (rebuilt, kept) = rebuild(&e, &reader, &mut outcome)?;
+                let (rebuilt, kept) = rebuild(&e, &reader, &mut outcome, keep)?;
                 props += kept;
                 writer.write_event(Event::Empty(rebuilt)).ok()?;
             }

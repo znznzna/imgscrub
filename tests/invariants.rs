@@ -31,7 +31,16 @@ fn sos(data: &[u8]) -> Vec<u8> {
 fn scan_data_is_never_touched() {
     for name in common::ALL {
         let d = common::fixture(name);
-        for opts in [Options { c2pa_only: true }, Options { c2pa_only: false }] {
+        for opts in [
+            Options {
+                c2pa_only: true,
+                ..Default::default()
+            },
+            Options {
+                c2pa_only: false,
+                ..Default::default()
+            },
+        ] {
             let (out, _) = process(&d, &opts).unwrap();
             assert_eq!(
                 sos(&d),
@@ -48,7 +57,14 @@ fn scan_data_is_never_touched() {
 fn c2pa_only_touches_nothing_else() {
     for name in common::ALL {
         let d = common::fixture(name);
-        let (out, _) = process(&d, &Options { c2pa_only: true }).unwrap();
+        let (out, _) = process(
+            &d,
+            &Options {
+                c2pa_only: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
 
         let keep: Vec<Vec<u8>> = scan(&d)
             .unwrap()
@@ -71,7 +87,16 @@ fn c2pa_only_touches_nothing_else() {
 fn processing_is_idempotent() {
     for name in common::ALL {
         let d = common::fixture(name);
-        for opts in [Options { c2pa_only: true }, Options { c2pa_only: false }] {
+        for opts in [
+            Options {
+                c2pa_only: true,
+                ..Default::default()
+            },
+            Options {
+                c2pa_only: false,
+                ..Default::default()
+            },
+        ] {
             let (once, _) = process(&d, &opts).unwrap();
             let (twice, report) = process(&once, &opts).unwrap();
             assert_eq!(once, twice, "{name} が冪等でない");
@@ -144,7 +169,14 @@ fn sibling_destination_naming() {
 #[test]
 fn c2pa_removal_is_reported_accurately() {
     let d = common::fixture("lrc_firefly.jpg");
-    let (out, report) = process(&d, &Options { c2pa_only: true }).unwrap();
+    let (out, report) = process(
+        &d,
+        &Options {
+            c2pa_only: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert_eq!(report.removals.len(), 1);
     assert_eq!(report.removals[0].bytes, 14_478);
     assert!(!scan(&out)
@@ -153,7 +185,14 @@ fn c2pa_removal_is_reported_accurately() {
         .any(|s| s.app_kind(&out) == Some(App::Jumbf)));
 
     let d = common::fixture("lrc_clean.jpg");
-    let (_, report) = process(&d, &Options { c2pa_only: true }).unwrap();
+    let (_, report) = process(
+        &d,
+        &Options {
+            c2pa_only: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert!(!report.changed(), "C2PA がないファイルは無変更: {report:?}");
 }
 
@@ -164,7 +203,14 @@ fn mpf_dropped_only_when_offsets_break() {
 
     // このフィクスチャは APP11 を持たないので、--c2pa-only では何も削除されない。
     // よって MPF のオフセットは保たれ、MPF も残る。
-    let (out, report) = process(&d, &Options { c2pa_only: true }).unwrap();
+    let (out, report) = process(
+        &d,
+        &Options {
+            c2pa_only: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert!(!report.changed());
     assert!(scan(&out)
         .unwrap()
@@ -183,7 +229,14 @@ fn mpf_dropped_only_when_offsets_break() {
     spliced.extend_from_slice(jumbf.bytes(&firefly));
     spliced.extend_from_slice(&d[2..]);
 
-    let (out, report) = process(&spliced, &Options { c2pa_only: true }).unwrap();
+    let (out, report) = process(
+        &spliced,
+        &Options {
+            c2pa_only: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
     assert_eq!(
         report.removals.len(),
         2,
