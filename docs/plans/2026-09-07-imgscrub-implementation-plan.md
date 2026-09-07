@@ -200,8 +200,9 @@ EXIF / ICC / IPTC / XMP  : バイト単位で一致
 - Release `v0.1.0`: 4 ターゲットの tar.gz + sha256
 - Homebrew tap: <https://github.com/znznzna/homebrew-tap>
   `brew install znznzna/tap/imgscrub` で実機インストール確認済み
-- **crates.io: 未公開。** `cargo publish --dry-run` は通るが API トークンが無い。
-  `cargo login` の後に `cargo publish` で完了する
+- crates.io: <https://crates.io/crates/imgscrub> 公開済み（`cargo install imgscrub` 動作確認済み）
+  - 初回は「A verified email address is required」で 400 になった。crates.io の
+    プロフィールでメール確認が必要
 
 ### テスト
 
@@ -229,3 +230,29 @@ EXIF / ICC / IPTC / XMP  : バイト単位で一致
 1. crates.io への publish（要 `cargo login`）
 2. `--strip-exif-private`（GPS・シリアル・MakerNote の除去。IFD 再構築）→ v0.2
 3. PNG / TIFF 対応 → v0.2 以降
+
+## v0.1.1 - v0.1.3（2026-09-07〜08）
+
+Phase 6 の検証が不十分で、Lightroom 後処理は**実際には一度も動いていなかった**。
+「Export Actions フォルダにファイルを置けた」ことを動作確認にしてしまい、
+LaunchServices を通していなかった。設計書 §「投入した記録を効いている証拠にしない」
+を自分で踏んだ形。3 回の書き出しで切り分けた。
+
+| 版 | 症状 | 真因 |
+|---|---|---|
+| v0.1.0 | 何も起きない | `.sh` は LaunchServices から起動できない（`open -a` で `error -10811` を再現） |
+| v0.1.1 | 何も起きない | プリセットが削除済み `.sh` の絶対パスを保持。LrC はエラーも出さない |
+| v0.1.2 | CI で落ちた | 一時ファイル名が固定で、並列実行時に互いのファイルを消し合う |
+| v0.1.3 | **成功** | Lightroom 再起動でフォルダ再読み込み。実機の書き出しで -24,147 B を確認 |
+
+### 入れた対策
+
+- `osacompile` で AppleScript ドロップレットを生成し `on open` で odoc を受ける
+- 埋め込むパスは `/opt/homebrew/bin` の symlink を優先（Cellar のバージョン入りパスだと
+  `brew upgrade` ごとに壊れる）
+- 書き出しプリセットを走査して旧 `.sh` 参照を検出、`--fix-presets` で書き換え
+- `~/Library/Logs/imgscrub-lightroom.log` に実行を記録。「呼ばれていない」と
+  「呼ばれて失敗した」を区別できるようにした
+- 一時ファイル名に PID を含める
+
+テスト 50 件（segments 12 / invariants 9 / xmp 10 / inspect 11 / lightroom 8）。
