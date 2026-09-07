@@ -194,9 +194,20 @@ photo.jpg  6750x5358  17894419 B
 imgscrub install-lightroom-action
 ```
 
-This drops a script into Lightroom Classic's `Export Actions` folder. Pick **imgscrub**
-under "Post-Processing" in the export dialog and it runs on every export — attach it to
-just your web preset if you like. `uninstall-lightroom-action` removes it.
+Pick **imgscrub** under "Post-Processing" in the export dialog and it runs on every
+export — attach it to just your web preset if you like. Every run is logged to
+`~/Library/Logs/imgscrub-lightroom.log` so you can confirm it fired.
+`uninstall-lightroom-action` removes it.
+
+Two things make this work, and both are easy to get wrong:
+
+- **It must be an application bundle, not a shell script.** Lightroom opens the item
+  through LaunchServices, which refuses a `.sh` with `error -10811`
+  (`kLSNotAnApplicationErr`). `install-lightroom-action` builds an AppleScript droplet
+  with `osacompile` so it can receive the exported files as an `odoc` Apple Event.
+- **imgscrub is called by absolute path.** GUI apps do not inherit your shell `PATH`, so
+  `/opt/homebrew/bin` is not on it. The installer resolves and embeds the running
+  binary's own path.
 
 ## Scope
 

@@ -452,19 +452,59 @@ fn inspection_json(path: &Path, i: &Inspection) -> String {
 }
 
 /// Lightroom Classic の書き出し後処理フォルダ。
+///
+/// `IMGSCRUB_EXPORT_ACTIONS_DIR` が設定されていればそれを使う。テストで実際の
+/// Lightroom の設定を触らずに登録・削除を検証するためのもの。
 fn export_actions_dir() -> Option<PathBuf> {
+    if let Some(d) = std::env::var_os("IMGSCRUB_EXPORT_ACTIONS_DIR") {
+        return Some(PathBuf::from(d));
+    }
     let home = std::env::var_os("HOME")?;
     Some(PathBuf::from(home).join("Library/Application Support/Adobe/Lightroom/Export Actions"))
 }
 
-const ACTION_SCRIPT: &str = "\
-#!/bin/sh
-# imgscrub — Lightroom Classic の書き出し後処理
-#
-# 書き出したファイルが引数で渡される。上書きで処理し、対応しない
-# フォーマットは黙って飛ばす（書き出し全体を失敗させないため）。
-exec imgscrub --in-place --quiet \"$@\"
-";
+/// Lightroom の書き出し後処理に置く AppleScript。
+///
+/// **シェルスクリプトでは動かない。** Lightroom Classic は Export Actions のアイテムを
+/// LaunchServices 経由で「アプリケーションとして開く」ため、`.sh` は
+/// `error -10811`（kLSNotAnApplicationErr）で起動されない。Apple Event の `odoc` を
+/// 受け取れるアプリケーションバンドルである必要がある。
+///
+/// また imgscrub は**絶対パスで呼ぶ**。GUI アプリの PATH には Homebrew の
+/// ディレクトリが含まれないため、`imgscrub` だけでは解決できない。
+const ACTION_APPLESCRIPT: &str = r#"-- imgscrub — Lightroom Classic の書き出し後処理
+-- imgscrub install-lightroom-action が生成する。手で編集しない。
+
+property binaryPath : "@BINARY@"
+property logPath : "@LOG@"
+
+on run
+	display dialog "これは Lightroom Classic の書き出し後処理から使うものです。" & return & return & "書き出しダイアログの「後処理」で imgscrub を選んでください。" buttons {"OK"} default button 1
+end run
+
+on open theFiles
+	set stamp to do shell script "/bin/date '+%Y-%m-%d %H:%M:%S'"
+	logLine(stamp & "  " & (count of theFiles) & " file(s)")
+	repeat with f in theFiles
+		try
+			do shell script quoted form of binaryPath & " --in-place " & ¬
+				quoted form of POSIX path of f & " >> " & quoted form of logPath & " 2>&1"
+		on error errMsg
+			logLine("  ERROR: " & errMsg)
+		end try
+	end repeat
+end open
+
+on logLine(t)
+	do shell script "echo " & quoted form of t & " >> " & quoted form of logPath
+end logLine
+"#;
+
+/// 後処理のログの置き場所。
+fn action_log_path() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    Some(PathBuf::from(home).join("Library/Logs/imgscrub-lightroom.log"))
+}
 
 fn install_action(force: bool) -> ExitCode {
     let Some(dir) = export_actions_dir() else {
@@ -478,29 +518,75 @@ fn install_action(force: bool) -> ExitCode {
         return ExitCode::from(2);
     }
 
-    let script = dir.join("imgscrub.sh");
-    if script.exists() && !force {
-        eprintln!("既に登録されています: {}", script.display());
+    // GUI アプリの PATH には頼れないので、いま動いている自分自身の絶対パスを埋め込む
+    let binary = match std::env::current_exe().and_then(|p| p.canonicalize()) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("自分の実行パスを解決できません: {e}");
+            return ExitCode::from(2);
+        }
+    };
+    let Some(log) = action_log_path() else {
+        eprintln!("HOME が取得できません");
+        return ExitCode::from(2);
+    };
+
+    let app = dir.join("imgscrub.app");
+    if app.exists() && !force {
+        eprintln!("既に登録されています: {}", app.display());
         eprintln!("上書きするなら --force");
         return ExitCode::from(2);
     }
 
-    if let Err(e) = std::fs::write(&script, ACTION_SCRIPT) {
-        eprintln!("{}: {e}", script.display());
+    let script = ACTION_APPLESCRIPT
+        .replace("@BINARY@", &binary.to_string_lossy())
+        .replace("@LOG@", &log.to_string_lossy());
+
+    let tmp = std::env::temp_dir().join("imgscrub-action.applescript");
+    if let Err(e) = std::fs::write(&tmp, &script) {
+        eprintln!("{}: {e}", tmp.display());
         return ExitCode::from(2);
     }
 
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755));
+    if app.exists() {
+        let _ = std::fs::remove_dir_all(&app);
     }
 
-    println!("登録しました: {}", script.display());
+    // osacompile は macOS 標準。odoc を受け取れるアプリケーションバンドルを作る
+    let out = std::process::Command::new("/usr/bin/osacompile")
+        .arg("-o")
+        .arg(&app)
+        .arg(&tmp)
+        .output();
+    let _ = std::fs::remove_file(&tmp);
+
+    match out {
+        Ok(o) if o.status.success() => {}
+        Ok(o) => {
+            eprintln!("osacompile が失敗しました:");
+            eprintln!("{}", String::from_utf8_lossy(&o.stderr));
+            return ExitCode::from(2);
+        }
+        Err(e) => {
+            eprintln!("osacompile を実行できません: {e}");
+            return ExitCode::from(2);
+        }
+    }
+
+    // 旧版のシェルスクリプトが残っていると壊れた選択肢が並ぶので消す
+    let legacy = dir.join("imgscrub.sh");
+    if legacy.exists() {
+        let _ = std::fs::remove_file(&legacy);
+        println!("旧版の imgscrub.sh を削除しました（LaunchServices から起動できないため）");
+    }
+
+    println!("登録しました: {}", app.display());
+    println!("  呼び出す imgscrub: {}", binary.display());
+    println!("  ログ: {}", log.display());
     println!();
     println!("Lightroom Classic の書き出しダイアログの「後処理」で");
     println!("「imgscrub」を選ぶと、書き出し後に自動で実行されます。");
-    println!("（imgscrub が PATH 上にある必要があります）");
+    println!("動いたかどうかは上のログで確認できます。");
     ExitCode::SUCCESS
 }
 
@@ -509,19 +595,38 @@ fn uninstall_action() -> ExitCode {
         eprintln!("HOME が取得できません");
         return ExitCode::from(2);
     };
-    let script = dir.join("imgscrub.sh");
-    if !script.exists() {
+
+    let app = dir.join("imgscrub.app");
+    let legacy = dir.join("imgscrub.sh");
+    let mut removed = false;
+
+    if app.exists() {
+        match std::fs::remove_dir_all(&app) {
+            Ok(()) => {
+                println!("削除しました: {}", app.display());
+                removed = true;
+            }
+            Err(e) => {
+                eprintln!("{}: {e}", app.display());
+                return ExitCode::from(2);
+            }
+        }
+    }
+    if legacy.exists() {
+        match std::fs::remove_file(&legacy) {
+            Ok(()) => {
+                println!("削除しました: {}", legacy.display());
+                removed = true;
+            }
+            Err(e) => {
+                eprintln!("{}: {e}", legacy.display());
+                return ExitCode::from(2);
+            }
+        }
+    }
+
+    if !removed {
         println!("登録されていません");
-        return ExitCode::SUCCESS;
     }
-    match std::fs::remove_file(&script) {
-        Ok(()) => {
-            println!("削除しました: {}", script.display());
-            ExitCode::SUCCESS
-        }
-        Err(e) => {
-            eprintln!("{}: {e}", script.display());
-            ExitCode::from(2)
-        }
-    }
+    ExitCode::SUCCESS
 }

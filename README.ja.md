@@ -196,9 +196,21 @@ photo.jpg  6750x5358  17894419 B
 imgscrub install-lightroom-action
 ```
 
-Lightroom Classic の `Export Actions` フォルダにスクリプトを置く。書き出しダイアログの
-「後処理」で **imgscrub** を選ぶと、書き出しごとに自動で走る。Web 用プリセットにだけ
-紐づけることもできる。`uninstall-lightroom-action` で外せる。
+書き出しダイアログの「後処理」で **imgscrub** を選ぶと、書き出しごとに自動で走る。
+Web 用プリセットにだけ紐づけることもできる。実行のたびに
+`~/Library/Logs/imgscrub-lightroom.log` に記録されるので、動いたかどうかを確認できる。
+`uninstall-lightroom-action` で外せる。
+
+これを動かすには 2 つ条件があり、どちらも間違えやすい。
+
+- **シェルスクリプトではなくアプリケーションバンドルである必要がある。** Lightroom は
+  アイテムを LaunchServices 経由で開くため、`.sh` は `error -10811`
+  （`kLSNotAnApplicationErr`）で拒否される。`install-lightroom-action` は `osacompile` で
+  AppleScript のドロップレットを生成し、書き出したファイルを Apple Event の `odoc` として
+  受け取れるようにする
+- **imgscrub は絶対パスで呼ぶ。** GUI アプリはシェルの `PATH` を継承しないので
+  `/opt/homebrew/bin` は入っていない。インストーラは動いている自分自身のパスを解決して
+  埋め込む
 
 ## 対応範囲
 
