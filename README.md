@@ -149,15 +149,23 @@ imgscrub install-lightroom-action
 |---|---|
 | `-o, --out-dir <DIR>` | write into this directory |
 | `--in-place` | overwrite the input (default writes `<name>_clean.jpg` alongside) |
+| `-n, --dry-run` | report what would be removed without writing anything |
 | `--c2pa-only` | remove `APP11` only; do not touch XMP or unknown `APPn` |
 | `--keep <LIST>` | exclude from removal: `xmpmm`, `crs`, `mpf`, `unknown` |
 | `-r, --recursive` | walk directories |
-| `-n, --dry-run` | report without writing |
 | `-q, --quiet` | summary only |
 | `--json` | machine-readable output |
 
 Exit code is `0` for success — including files that were skipped or already clean, so it
 is safe in a pipeline — and `2` when a file could not be processed.
+
+> **`--in-place` cannot be undone.** The default is non-destructive: the input is left alone
+> and a `<name>_clean.jpg` is written next to it. `--in-place` replaces the input, and there
+> is no way to put the removed metadata back. Run `-n` first to see what would go, and keep
+> a copy of anything you cannot re-export.
+>
+> The pixels are never touched in either mode, so an overwritten file is still your image at
+> full quality — what is gone is the metadata.
 
 ### Diagnose first
 
